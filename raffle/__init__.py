@@ -1,0 +1,1 @@
+"""Isolated Telegram raffle."""

@@ -98,7 +98,11 @@ class Application:
             was_open = self.db.round_status(rid) == "open"
             winners = self.db.draw(rid, user["id"], winner_count)
             if was_open:
-                self._notify_draw(rid, winners)
+                threading.Thread(
+                    target=self._notify_draw,
+                    args=(rid, winners),
+                    daemon=True,
+                ).start()
             result = {"winners": winners}
         elif path == "/api/admin/remove-participant":
             number = body.get("number")
@@ -112,14 +116,39 @@ class Application:
     def _notify_draw(self, round_id, winners):
         if not winners:
             return
-        for place, w in enumerate(winners, start=1):
+
+        winner_ids = {w["telegram_id"] for w in winners}
+
+        for w in winners:
             text = (
-                f"🎉 Поздравляем! Вы победили в розыгрыше.\n"
-                f"Место: {place}\n"
-                f"Ваш билет: №{w['number']}.\n\n"
-                f"Свяжитесь с организатором для получения приза."
+                "🎉 Сегодня удача на Вашей стороне!\n\n"
+                "Поздравляем, Вы стали победителем\n\n"
+                "🤝 Чтобы получить подарок, напишите, пожалуйста, в нашу группу. "
+                "Мы найдём Вас на конференции и лично передадим Вам приз.\n\n"
+                "Спасибо за участие и до скорой встречи!\n\n"
+                "Искренне Ваша,\n"
+                "Команда HERMES 🫡"
             )
             send_message(self.config.token, w["telegram_id"], text)
+
+        try:
+            losers = self.db.losers_ids(round_id)
+        except Exception:
+            logging.exception("Failed to fetch losers for round %s", round_id)
+            losers = []
+        loser_text = (
+            "🎁 Сегодня Фортуна к Вам неблагосклонна\n\n"
+            "К сожалению, Вам не удалось стать победителем, но благодарим Вас за участие!\n\n"
+            "🤝 Главное — команда HERMES всегда на связи, с радостью ответит на любые вопросы "
+            "и поможет с любыми задачами по обмену криптовалюты.\n\n"
+            "Ждём Вас в нашем Telegram-канале — там Вы найдёте самые важные новости и обновления.\n\n"
+            "Искренне Ваша,\n"
+            "Команда HERMES 🫡"
+        )
+        for tid in losers:
+            if tid in winner_ids:
+                continue
+            send_message(self.config.token, tid, loser_text)
 
         lines = [f"🎯 Розыгрыш №{round_id} завершён.\n"]
         for place, w in enumerate(winners, start=1):

@@ -216,6 +216,15 @@ class Database:
             ).fetchone()
             return [dict(row)] if row else []
 
+    def losers_ids(self, round_id):
+        """Telegram ID всех участников розыгрыша, которые НЕ победили."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT telegram_id FROM entries WHERE round_id=? AND place IS NULL",
+                (round_id,),
+            ).fetchall()
+            return [r["telegram_id"] for r in rows]
+
     def round_status(self, round_id):
         with self.connect() as conn:
             row = conn.execute("SELECT status FROM rounds WHERE id=?", (round_id,)).fetchone()

@@ -1,5 +1,5 @@
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-
+[hidden] { display: none !important; }
 :root {
   --wine: #2a0510;
   --blood: #6b0015;

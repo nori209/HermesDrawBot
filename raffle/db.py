@@ -217,7 +217,6 @@ class Database:
             return [dict(row)] if row else []
 
     def losers_ids(self, round_id):
-        """Telegram ID всех участников розыгрыша, которые НЕ победили."""
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT telegram_id FROM entries WHERE round_id=? AND place IS NULL",

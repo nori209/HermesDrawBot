@@ -44,9 +44,15 @@ class Bot:
         self.api("getMe")
         if self.api("getWebhookInfo").get("url"):
             raise RuntimeError("У этого токена уже установлен webhook. Используйте отдельного нового бота.")
-        self.api("setChatMenuButton", {"menu_button": {"type": "web_app", "text": "Розыгрыш", "web_app": {"url": self.config.app_url}}})
-        self.api("setMyCommands", {"commands": [{"command": "start", "description": "Открыть розыгрыш"},
-                                                {"command": "help", "description": "Как участвовать"}]})
+        self.api("setChatMenuButton", {
+            "menu_button": {"type": "web_app", "text": "Розыгрыш",
+                            "web_app": {"url": self.config.app_url}}
+        })
+        self.api("setMyCommands", {"commands": [
+            {"command": "start", "description": "Открыть розыгрыш"},
+            {"command": "help", "description": "Как участвовать"},
+            {"command": "admin", "description": "Функции организатора"},
+        ]})
 
     def handle(self, update):
         message = update.get("message", {})
@@ -55,12 +61,55 @@ class Bot:
         text = message.get("text", "").split(" ")[0].split("@")[0]
         if text not in ("/start", "/help", "/admin"):
             return
-        owner = message.get("from", {}).get("id") == self.config.owner_id
-        welcome = "🎯 Добро пожаловать в розыгрыш!\n\nОткройте приложение и нажмите «Участвовать». Вы получите личный номер. Результат появится здесь же, в приложении."
-        if owner:
-            welcome += "\n\nВы — организатор. В приложении доступна кнопка «Запустить розыгрыш» и список участников."
-        self.api("sendMessage", {"chat_id": message["chat"]["id"], "text": welcome,
-                                "reply_markup": {"inline_keyboard": [[{"text": "🎯 Открыть розыгрыш", "web_app": {"url": self.config.app_url}}]]}})
+
+        chat_id = message["chat"]["id"]
+        is_owner = message.get("from", {}).get("id") == self.config.owner_id
+
+        if text == "/admin":
+            if not is_owner:
+                return
+            self._send_admin_panel(chat_id)
+            return
+
+        welcome = (
+            "🎯 Добро пожаловать в розыгрыш!\n\n"
+            "Откройте приложение и нажмите «Участвовать». "
+            "Вы получите личный номер. Результат появится здесь же, в приложении."
+        )
+        if is_owner:
+            welcome += "\n\nВы — организатор. Введите /admin, чтобы увидеть все функции."
+        self.api("sendMessage", {
+            "chat_id": chat_id,
+            "text": welcome,
+            "reply_markup": {"inline_keyboard": [[
+                {"text": "🎯 Открыть розыгрыш", "web_app": {"url": self.config.app_url}}
+            ]]},
+        })
+
+    def _send_admin_panel(self, chat_id):
+        text = (
+            "🛠 Панель организатора Hermes Exchange\n\n"
+            "Доступные функции:\n\n"
+            "🎯 Запустить розыгрыш — закрывает регистрацию и выбирает победителей\n"
+            "👥 Участники — список всех зарегистрированных с Telegram ID и номерами билетов\n"
+            "❌ Удалить участника — убрать любого человека до запуска розыгрыша\n"
+            "🔢 Выбрать количество победителей — от 1 до 10 человек\n"
+            "🎟 Билеты — каждому участнику автоматически приходит PNG-билет при регистрации\n"
+            "📣 Сообщения — победителям и проигравшим отправляются разные поздравления\n"
+            "🔄 Следующий розыгрыш — открывает новый раунд, сохраняя историю\n\n"
+            "Все действия выполняются в приложении. Нажмите кнопку ниже, чтобы открыть панель.\n\n"
+            "💡 Чтобы вернуться к этому списку — отправьте /admin"
+        )
+        self.api("sendMessage", {
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": {"inline_keyboard": [
+                [{"text": "🛠 Открыть панель организатора",
+                  "web_app": {"url": self.config.app_url}}],
+                [{"text": "🎯 Открыть розыгрыш как участник",
+                  "web_app": {"url": self.config.app_url}}],
+            ]},
+        })
 
     def run(self):
         while not self.stop.is_set():
@@ -92,7 +141,6 @@ class Bot:
 
 
 def send_message(token, chat_id, text):
-    """Send a Telegram message. Used by the web app for draw notifications."""
     if not token or not chat_id:
         return False
     request = urllib.request.Request(
@@ -110,7 +158,6 @@ def send_message(token, chat_id, text):
 
 
 def send_photo(token, chat_id, photo_bytes, caption=""):
-    """Send a Telegram photo via multipart upload. Used by the web app."""
     import io as _io
     import uuid as _uuid
     if not token or not chat_id or not photo_bytes:

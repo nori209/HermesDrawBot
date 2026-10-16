@@ -1,10 +1,17 @@
-"""PNG-билет в стиле трамвайного, платиново-красно-белая палитра Hermes."""
+"""PNG-билет в высоком качестве, платиново-красно-белая палитра Hermes."""
 import io
 from datetime import datetime, timezone
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-W, H = 560, 900
+W, H = 720, 1160
+SCALE = 3
+SW, SH = W * SCALE, H * SCALE
+
+
+def S(v):
+    return int(round(v * SCALE))
+
 
 PLATINUM = (213, 220, 212)
 PLATINUM_DARK = (168, 176, 170)
@@ -30,15 +37,16 @@ FONTS = {
 def _font(weight, size):
     for path in FONTS[weight]:
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(path, S(size))
         except OSError:
             continue
     return ImageFont.load_default()
 
 
 def _draw_logo(draw, cx, cy, width, height, color):
-    hw, hh = width / 2, height / 2
-    gap = max(2, width * 0.012)
+    cx, cy = S(cx), S(cy)
+    hw, hh = S(width) / 2, S(height) / 2
+    gap = max(2, S(width) * 0.012)
     waist = hh * 0.22
     left = [(cx - hw, cy - hh), (cx - gap, cy - waist),
             (cx - gap, cy + waist), (cx - hw, cy + hh)]
@@ -49,11 +57,13 @@ def _draw_logo(draw, cx, cy, width, height, color):
 
 
 def _draw_tracked(draw, text, x, y, font, fill, tracking=0, align="left"):
+    x, y = S(x), S(y)
+    track_px = S(tracking)
     widths = []
     for ch in text:
         bbox = draw.textbbox((0, 0), ch, font=font)
         widths.append(bbox[2] - bbox[0])
-    total = sum(widths) + tracking * max(0, len(text) - 1)
+    total = sum(widths) + track_px * max(0, len(text) - 1)
     if align == "center":
         cx = x - total / 2
     elif align == "right":
@@ -63,86 +73,95 @@ def _draw_tracked(draw, text, x, y, font, fill, tracking=0, align="left"):
     for ch, w in zip(text, widths):
         bbox = draw.textbbox((0, 0), ch, font=font)
         draw.text((cx - bbox[0], y), ch, font=font, fill=fill)
-        cx += w + tracking
+        cx += w + track_px
 
 
-def _perforation(draw, y, x_start=40, x_end=W - 40, color=PLATINUM_DARK):
-    x = x_start
-    while x < x_end:
-        draw.line([(x, y), (x + 6, y)], fill=color, width=2)
-        x += 14
+def _perforation(draw, y, x_start, x_end, color=PLATINUM_DARK):
+    y = S(y)
+    x = S(x_start)
+    end = S(x_end)
+    dash = S(6)
+    gap = S(8)
+    while x < end:
+        draw.line([(x, y), (x + dash, y)], fill=color, width=S(2))
+        x += dash + gap
 
 
 def generate(number, total=None):
-    img = Image.new("RGB", (W, H), BLACK)
+    img = Image.new("RGB", (SW, SH), BLACK)
     draw = ImageDraw.Draw(img)
 
-    for y in range(H):
-        t = min(1.0, y / H)
+    for y in range(SH):
+        t = min(1.0, y / SH)
         e = t * t
         r = int(CHERRY[0] * (1 - e) + BLACK[0] * e)
         g = int(CHERRY[1] * (1 - e) + BLACK[1] * e)
         b = int(CHERRY[2] * (1 - e) + BLACK[2] * e)
-        draw.line([(0, y), (W, y)], fill=(r, g, b))
+        draw.line([(0, y), (SW, y)], fill=(r, g, b))
 
-    header_h = 96
-    draw.rectangle([0, 0, W, header_h], fill=PLATINUM)
+    header_h = S(120)
+    draw.rectangle([0, 0, SW, header_h], fill=PLATINUM)
 
-    for i in range(60):
-        x = 24 + i * 8
-        h = 4 if i % 3 else 7
-        draw.line([(x, 22), (x, 22 + h)], fill=PLATINUM_DARK, width=2)
+    for i in range(72):
+        x = S(30) + i * S(9)
+        h = S(4) if i % 3 else S(8)
+        draw.line([(x, S(28)), (x, S(28) + h)], fill=PLATINUM_DARK, width=S(2))
 
-    corner = _font("bold", 15)
-    draw.text((24, 46), "HERMES EXCHANGE", font=corner, fill=DEEP_RED)
-    draw.text((24, 66), "ТРАМВАЙНЫЙ БИЛЕТ · 2026", font=_font("regular", 12), fill=DEEP_RED)
+    corner = _font("bold", 17)
+    draw.text((S(30), S(58)), "HERMES EXCHANGE", font=corner, fill=DEEP_RED)
+    draw.text((S(30), S(82)), "КРИПБИЛЕТ · 2026",
+              font=_font("regular", 13), fill=DEEP_RED)
 
-    _draw_logo(draw, W - 90, header_h / 2, 96, 34, DEEP_RED)
+    _draw_logo(draw, W - 110, 60, 120, 42, DEEP_RED)
 
-    draw.rectangle([0, header_h, W, header_h + 4], fill=HERMES_RED)
+    draw.rectangle([0, header_h, SW, header_h + S(5)], fill=HERMES_RED)
 
-    _draw_tracked(draw, "БИЛЕТ", W / 2, 150, _font("bold", 18), SOFT,
-                  tracking=12, align="center")
+    _draw_tracked(draw, "БИЛЕТ", W / 2, 195, _font("bold", 22), SOFT,
+                  tracking=14, align="center")
 
-    num_font = _font("bold", 240)
+    num_font = _font("bold", 300)
     num_str = str(number)
     bbox = draw.textbbox((0, 0), num_str, font=num_font)
     tw = bbox[2] - bbox[0]
-    nx = (W - tw) / 2 - bbox[0]
-    ny = 340 - bbox[1]
+    nx = (SW - tw) / 2 - bbox[0]
+    ny = S(440) - bbox[1]
 
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    glow = Image.new("RGBA", (SW, SH), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
     gd.text((nx, ny), num_str, font=num_font, fill=(*HERMES_RED, 240))
-    glow = glow.filter(ImageFilter.GaussianBlur(45))
+    glow = glow.filter(ImageFilter.GaussianBlur(S(55)))
     img.paste(glow, (0, 0), glow)
 
     draw = ImageDraw.Draw(img)
     draw.text((nx, ny), num_str, font=num_font, fill=WHITE)
 
-    series_font = _font("bold", 16)
-    _draw_tracked(draw, "СЕРИЯ  HE", 40, 620, series_font, PLATINUM,
-                  tracking=3, align="left")
-    _draw_tracked(draw, f"№  {number:05d}", W - 40, 620, series_font, PLATINUM,
-                  tracking=3, align="right")
+    series_font = _font("bold", 19)
+    _draw_tracked(draw, "СЕРИЯ  HE", 55, 795, series_font, PLATINUM,
+                  tracking=4, align="left")
+    _draw_tracked(draw, f"№  {number:05d}", W - 55, 795, series_font, PLATINUM,
+                  tracking=4, align="right")
 
     date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
-    _draw_tracked(draw, f"ДАТА  {date_str}", 40, 646, _font("regular", 13), PLATINUM_DARK,
-                  tracking=2, align="left")
+    _draw_tracked(draw, f"ДАТА  {date_str}", 55, 828,
+                  _font("regular", 15), PLATINUM_DARK,
+                  tracking=3, align="left")
 
-    _perforation(draw, 700)
+    _perforation(draw, 900, 50, W - 50)
 
-    stub_font = _font("bold", 14)
-    _draw_tracked(draw, "КОНТРОЛЬНЫЙ КОРЕШОК", W / 2, 730, stub_font, SOFT,
-                  tracking=6, align="center")
+    _draw_tracked(draw, "КОНТРОЛЬНЫЙ КОРЕШОК", W / 2, 940,
+                  _font("bold", 16), SOFT,
+                  tracking=8, align="center")
 
-    _draw_logo(draw, W / 2, 800, 180, 48, PLATINUM)
+    _draw_logo(draw, W / 2, 1035, 220, 58, PLATINUM)
 
-    brand = _font("bold", 11)
-    _draw_tracked(draw, "THE HERMES EXCHANGE — SINCE 2018", W / 2, 850, brand,
-                  HERMES_RED, tracking=2, align="center")
+    brand = _font("bold", 13)
+    _draw_tracked(draw, "THE HERMES EXCHANGE — SINCE 2018",
+                  W / 2, 1100, brand, HERMES_RED,
+                  tracking=3, align="center")
 
-    draw.rectangle([0, 0, W - 1, H - 1], outline=HERMES_RED, width=1)
+    draw.rectangle([0, 0, SW - 1, SH - 1], outline=HERMES_RED, width=S(1))
+
+    img = img.resize((W, H), Image.LANCZOS)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)

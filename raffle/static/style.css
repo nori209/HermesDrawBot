@@ -297,3 +297,89 @@ body.drawing .display-box {
     animation: none !important;
   }
 }
+/* === МОДАЛКА УЧАСТНИКОВ === */
+.modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(8,2,5,.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-panel {
+  width: 100%; max-width: 440px;
+  max-height: 85vh;
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, var(--wine), var(--ink));
+  border: 1px solid rgba(255,204,213,.2);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.8), 0 0 60px rgba(201,24,51,.3);
+}
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px;
+}
+.modal-close {
+  background: none; border: 0;
+  color: var(--soft); font-size: 28px; line-height: 1;
+  padding: 0 6px; cursor: pointer;
+}
+.modal-close:hover { color: var(--neon); }
+.participant-list {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding-right: 4px;
+}
+.participant-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.participant-row .p-info { min-width: 0; flex: 1; }
+.participant-row .p-name {
+  color: #fff; font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.participant-row .p-sub {
+  color: var(--muted); font-size: 11px; margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.participant-row .p-num {
+  font-family: Georgia, serif;
+  color: var(--soft); font-size: 16px;
+  white-space: nowrap;
+  text-shadow: 0 0 10px var(--crimson);
+}
+.participant-row .p-remove {
+  background: none;
+  border: 1px solid rgba(255,46,77,.45);
+  color: var(--neon);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 1px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.participant-row .p-remove:hover {
+  background: rgba(255,46,77,.15);
+  border-color: rgba(255,46,77,.7);
+}
+.pagination {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: var(--muted);
+}
+.pagination .text-button {
+  background: none; border: 0;
+  color: var(--soft);
+  padding: 8px 6px;
+  font-size: 12px; font-weight: 700;
+  cursor: pointer;
+}
+.pagination .text-button:hover:not(:disabled) { color: var(--neon); }
+.pagination .text-button:disabled { opacity: .3; cursor: default; }

@@ -145,3 +145,14 @@ class Database:
     def set_bot_offset(self, offset):
         with self.connect() as conn:
             conn.execute("INSERT INTO bot_state(key,value) VALUES('offset',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(offset),))
+
+    def remove_entry(self, round_id, number):
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = self.current(conn, round_id)
+            if current["status"] != "open":
+                raise AppError(409, "После запуска розыгрыша список изменить нельзя.")
+            cursor = conn.execute("DELETE FROM entries WHERE round_id=? AND number=?", (round_id, number))
+            if cursor.rowcount == 0:
+                raise AppError(404, "Участник не найден.")
+            return {"removed": number}

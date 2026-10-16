@@ -40,8 +40,24 @@
 
     <button class="btn" id="mainBtn" disabled>Загрузка…</button>
     <button class="btn btn-ghost" id="secondBtn" hidden>Запустить</button>
+    <button class="btn btn-ghost" id="listBtn" hidden>Участники</button>
 
     <p class="footer">Hermes Exchange</p>
+    <p class="footer">Hermes Exchange</p>
+  </div>
+  <div class="modal" id="participantsModal" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="eyebrow">УЧАСТНИКИ</span>
+        <button class="modal-close" id="participantsClose" aria-label="Закрыть">×</button>
+      </div>
+      <div class="participant-list" id="participantsList"></div>
+      <div class="pagination">
+        <button class="text-button" id="prevPage" disabled>← Назад</button>
+        <span id="pageLabel">1 / 1</span>
+        <button class="text-button" id="nextPage" disabled>Далее →</button>
+      </div>
+    </div>
   </div>
 </body>
 </html>

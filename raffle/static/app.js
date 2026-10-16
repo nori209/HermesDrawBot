@@ -13,6 +13,15 @@ const mainBtn = $('mainBtn');
 const secondBtn = $('secondBtn');
 const stage = $('stage');
 const flash = $('flash');
+const listBtn = $('listBtn');
+const participantsModal = $('participantsModal');
+const participantsList = $('participantsList');
+const participantsClose = $('participantsClose');
+const prevPage = $('prevPage');
+const nextPage = $('nextPage');
+const pageLabel = $('pageLabel');
+
+let currentPage = 1;
 
 let state = null;
 let busy = false;
@@ -124,6 +133,13 @@ function render() {
     secondBtn.disabled = busy || fatal;
   } else {
     secondBtn.hidden = true;
+  }
+    if (owner) {
+    listBtn.hidden = false;
+    listBtn.textContent = `Участники (${state.participant_count})`;
+    listBtn.disabled = busy || fatal;
+  } else {
+    listBtn.hidden = true;
   }
 }
 
@@ -239,6 +255,93 @@ secondBtn.addEventListener('click', () => action(async () => {
     shownValue = null;
     await refresh();
   }
+}));
+
+
+async function loadParticipants() {
+  const data = await api(`/api/admin/participants?round_id=${state.round.id}&page=${currentPage}`);
+  const editable = state.round.status === 'open';
+  const rows = data.items.map(item => {
+    const row = document.createElement('div');
+    row.className = 'participant-row';
+
+    const info = document.createElement('div');
+    info.className = 'p-info';
+    const name = document.createElement('div');
+    name.className = 'p-name';
+    name.textContent = item.username ? `@${item.username}` : item.display_name;
+    const sub = document.createElement('div');
+    sub.className = 'p-sub';
+    sub.textContent = `ID ${item.telegram_id} · ${item.display_name}`;
+    info.append(name, sub);
+
+    const num = document.createElement('span');
+    num.className = 'p-num';
+    num.textContent = `№${pad(item.number)}`;
+
+    row.append(info, num);
+
+    if (editable) {
+      const btn = document.createElement('button');
+      btn.className = 'p-remove';
+      btn.textContent = 'Удалить';
+      btn.addEventListener('click', () => removeParticipant(item.number));
+      row.append(btn);
+    }
+    return row;
+  });
+  if (!rows.length) {
+    const empty = document.createElement('p');
+    empty.style.color = 'var(--muted)';
+    empty.style.textAlign = 'center';
+    empty.style.padding = '30px 0';
+    empty.textContent = 'Пока никого';
+    participantsList.replaceChildren(empty);
+  } else {
+    participantsList.replaceChildren(...rows);
+  }
+  pageLabel.textContent = `${data.page} / ${Math.max(1, data.pages)}`;
+  prevPage.disabled = currentPage <= 1;
+  nextPage.disabled = currentPage >= data.pages;
+}
+
+async function removeParticipant(num) {
+  if (busy || fatal) return;
+  const ok = await confirmDialog(
+    'Удалить участника?',
+    `Билет №${pad(num)} будет удалён из розыгрыша. Действие необратимо.`
+  );
+  if (!ok) return;
+  busy = true;
+  try {
+    await api('/api/admin/remove-participant', { round_id: state.round.id, number: num });
+    await refresh();
+    await loadParticipants();
+    haptic('win');
+  } catch (err) {
+    if (tg?.showAlert) tg.showAlert(err.message || 'Ошибка').catch(() => {});
+    else alert(err.message || 'Ошибка');
+  } finally {
+    busy = false;
+  }
+}
+
+listBtn.addEventListener('click', () => action(async () => {
+  currentPage = 1;
+  await loadParticipants();
+  participantsModal.hidden = false;
+}));
+
+participantsClose.addEventListener('click', () => { participantsModal.hidden = true; });
+participantsModal.addEventListener('click', (e) => {
+  if (e.target === participantsModal) participantsModal.hidden = true;
+});
+
+prevPage.addEventListener('click', () => action(async () => {
+  if (currentPage > 1) { currentPage -= 1; await loadParticipants(); }
+}));
+nextPage.addEventListener('click', () => action(async () => {
+  currentPage += 1; await loadParticipants();
 }));
 
 (async function start() {

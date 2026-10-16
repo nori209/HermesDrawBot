@@ -51,7 +51,8 @@ class Application:
             name, content_type = assets[path]
             return 200, (STATIC / name).read_bytes(), content_type
         routes = {"/api/state": "GET", "/api/join": "POST", "/api/admin/draw": "POST",
-                  "/api/admin/new-round": "POST", "/api/admin/participants": "GET"}
+                  "/api/admin/new-round": "POST", "/api/admin/participants": "GET",
+                  "/api/admin/remove-participant": "POST"}
         if path not in routes:
             raise AppError(404, "Страница не найдена.")
         if method != routes[path]:
@@ -81,6 +82,11 @@ class Application:
             result = {"entry": self.db.join(rid, user)}
         elif path == "/api/admin/draw":
             result = {"winner": self.db.draw(rid, user["id"])}
+        elif path == "/api/admin/remove-participant":
+            number = body.get("number")
+            if type(number) is not int or number < 1:
+                raise AppError(400, "Укажите номер участника.")
+            result = self.db.remove_entry(rid, number)
         else:
             result = {"round_id": self.db.new_round(rid)}
         return 200, result, json_type

@@ -13,8 +13,6 @@ if (tg) {
 const $ = (id) => document.getElementById(id);
 
 const numberEl = $('number');
-const countEl = $('count');
-const countRow = $('countRow');
 const mainBtn = $('mainBtn');
 const secondBtn = $('secondBtn');
 const listBtn = $('listBtn');
@@ -38,7 +36,7 @@ const confirmText = $('confirmText');
 const confirmYes = $('confirmYes');
 const confirmNo = $('confirmNo');
 
-const REVEAL_DELAY_MS = 4000;
+const REVEAL_DELAY_MS = 4500;
 const POLL_INTERVAL_MS = 2000;
 
 let state = null;
@@ -64,6 +62,7 @@ function haptic(type) {
   if (!tg?.HapticFeedback) return;
   try {
     if (type === 'light') tg.HapticFeedback.impactOccurred('light');
+    if (type === 'medium') tg.HapticFeedback.impactOccurred('medium');
     if (type === 'heavy') tg.HapticFeedback.impactOccurred('heavy');
     if (type === 'win') tg.HapticFeedback.notificationOccurred('success');
   } catch (_) {}
@@ -74,12 +73,12 @@ function burstParticles() {
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
   const palette = ['#ffffff', '#ffccd5', '#ff2e4d', '#c91833', '#6b0015'];
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 36; i++) {
     const p = document.createElement('div');
     p.className = 'particle';
-    const angle = (Math.PI * 2 * i) / 30 + Math.random() * 0.5;
-    const dist = 130 + Math.random() * 200;
-    const size = 4 + Math.random() * 7;
+    const angle = (Math.PI * 2 * i) / 36 + Math.random() * 0.5;
+    const dist = 140 + Math.random() * 220;
+    const size = 4 + Math.random() * 8;
     const color = palette[i % palette.length];
     p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
     p.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
@@ -134,8 +133,7 @@ function medals(i) {
 }
 
 function render() {
-  if (!state) { countEl.value = '0'; return; }
-  if (state.is_owner) countEl.value = String(state.participant_count);
+  if (!state) return;
 
   const value = desiredValue();
   if (value !== null && value !== shownValue) {
@@ -168,11 +166,9 @@ function render() {
   else if (!open) mainBtn.textContent = 'Розыгрыш завершён';
   else mainBtn.textContent = 'Участвовать';
 
-  countRow.hidden = !owner;
-
   if (owner) {
     listBtn.hidden = false;
-    listBtn.textContent = `Участники (${state.participant_count})`;
+    listBtn.textContent = 'Участники';
     listBtn.disabled = locked;
   } else {
     listBtn.hidden = true;
@@ -242,6 +238,10 @@ function syncSpinState() {
   });
 }
 
+// === НОВАЯ АНИМАЦИЯ ===
+// Кривая скорости: разгон → бешенство → замедление → ложный финал →
+// снова разгон → финальная остановка.
+// На высокой скорости — усиленное свечение и мелкая тряска.
 async function spinFor(durationMs, finalNumber) {
   stage.classList.add('rolling');
   document.body.classList.add('drawing');
@@ -250,29 +250,84 @@ async function spinFor(durationMs, finalNumber) {
   const start = performance.now();
   let lastHapticAt = 0;
 
+  function rand() {
+    return pad(Math.max(1, Math.floor(Math.random() * top) + 1));
+  }
+
+  function paint(text, shake) {
+    numberEl.textContent = text;
+    fitFont(text);
+    if (shake) {
+      numberEl.classList.remove('tick');
+      void numberEl.offsetWidth;
+      numberEl.classList.add('tick');
+    }
+  }
+
   while (true) {
     const elapsed = performance.now() - start;
     if (elapsed >= durationMs) break;
-    const progress = elapsed / durationMs;
+    const p = elapsed / durationMs;
+
     let interval;
-    if (progress < 0.25) interval = 140 - (progress / 0.25) * 90;
-    else if (progress < 0.6) interval = 50;
-    else {
-      const p = (progress - 0.6) / 0.4;
-      interval = 80 + Math.pow(p, 2.2) * 620;
+    let shake = false;
+    let glow = 'normal'; // normal | hot
+
+    if (p < 0.15) {
+      // 1. Разгон: 120 → 45 мс
+      interval = 120 - (p / 0.15) * 75;
+    } else if (p < 0.5) {
+      // 2. Бешенство: 40 мс
+      interval = 40;
+      glow = 'hot';
+    } else if (p < 0.7) {
+      // 3. Первое замедление: 60 → 340 мс
+      const q = (p - 0.5) / 0.2;
+      interval = 60 + Math.pow(q, 1.8) * 280;
+      shake = q > 0.55;
+    } else if (p < 0.78) {
+      // 4. Ложный финал: 480 мс, тряска
+      interval = 480;
+      shake = true;
+    } else if (p < 0.84) {
+      // 5. Резкий разгон обратно: 480 → 60 мс
+      const q = (p - 0.78) / 0.06;
+      interval = 480 - q * 420;
+      glow = 'hot';
+    } else {
+      // 6. Финальная остановка: 80 → 780 мс
+      const q = (p - 0.84) / 0.16;
+      interval = 80 + Math.pow(q, 2.4) * 700;
+      shake = q > 0.35;
     }
-    const text = pad(Math.max(1, Math.floor(Math.random() * top) + 1));
-    numberEl.textContent = text;
-    fitFont(text);
-    if (elapsed - lastHapticAt > 120) {
-      haptic(progress > 0.75 ? 'heavy' : 'light');
+
+    paint(rand(), shake);
+
+    // Свечение зависит от скорости
+    if (glow === 'hot') {
+      numberEl.style.textShadow = '0 0 18px #fff, 0 0 40px var(--neon), 0 0 90px var(--crimson), 0 0 150px var(--blood)';
+    } else {
+      numberEl.style.textShadow = '';
+    }
+
+    // Вибрация по интервалу
+    const minGap = Math.max(60, interval * 0.85);
+    if (elapsed - lastHapticAt > minGap) {
+      haptic(interval > 280 ? 'heavy' : interval < 60 ? 'medium' : 'light');
       lastHapticAt = elapsed;
     }
+
     await sleep(interval);
   }
 
+  // Короткая пауза "затишья" перед победителем
+  await sleep(140);
+
+  numberEl.style.textShadow = '';
+  numberEl.classList.remove('tick');
   stage.classList.remove('rolling');
   document.body.classList.remove('drawing');
+
   setNumber(pad(finalNumber), { winner: true });
   haptic('win');
 }
@@ -347,7 +402,7 @@ secondBtn.addEventListener('click', () => action(async () => {
     const winnerCount = Math.max(1, Math.min(10, parseInt(winnerCountInput.value, 10) || 1));
     const ok = await askConfirm(
       'Запустить розыгрыш?',
-      `Участников: ${state.participant_count}. Победителей: ${winnerCount}. Регистрация закроется. Результат нельзя переиграть.`,
+      `Победителей: ${winnerCount}. Регистрация закроется. Результат нельзя переиграть.`,
       'Запустить'
     );
     if (!ok) return;

@@ -44,6 +44,20 @@ function haptic(type) {
   if (type === 'win') tg.HapticFeedback.notificationOccurred('success');
 }
 
+function showAlert(message) {
+  return new Promise((resolve) => {
+    if (tg?.showAlert) tg.showAlert(message, () => resolve());
+    else { window.alert(message); resolve(); }
+  });
+}
+
+function confirmDialog(title, message) {
+  return new Promise((resolve) => {
+    if (tg?.showConfirm) tg.showConfirm(message, (ok) => resolve(Boolean(ok)));
+    else resolve(window.confirm(message));
+  });
+}
+
 function burstParticles() {
   const rect = $('displayBox').getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
@@ -152,7 +166,6 @@ async function api(path, body) {
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: 'no-store',
-    signal: AbortSignal.timeout(20000),
   });
   const data = await resp.json();
   if (!resp.ok) {
@@ -174,18 +187,11 @@ async function action(task) {
   try { await task(); }
   catch (err) {
     haptic('heavy');
-    const msg = err.message || 'Ошибка';
-    if (tg?.showAlert) tg.showAlert(msg).catch(() => {});
-    else alert(msg);
+    await showAlert(err.message || 'Ошибка');
   } finally {
     busy = false;
     render();
   }
-}
-
-function confirmDialog(title, message) {
-  if (tg?.showConfirm) return tg.showConfirm(message, { title }).catch(() => false);
-  return Promise.resolve(window.confirm(message));
 }
 
 function fakeSpin(finalNumber, max) {
@@ -257,7 +263,6 @@ secondBtn.addEventListener('click', () => action(async () => {
   }
 }));
 
-
 async function loadParticipants() {
   const data = await api(`/api/admin/participants?round_id=${state.round.id}&page=${currentPage}`);
   const editable = state.round.status === 'open';
@@ -319,8 +324,7 @@ async function removeParticipant(num) {
     await loadParticipants();
     haptic('win');
   } catch (err) {
-    if (tg?.showAlert) tg.showAlert(err.message || 'Ошибка').catch(() => {});
-    else alert(err.message || 'Ошибка');
+    await showAlert(err.message || 'Ошибка');
   } finally {
     busy = false;
   }

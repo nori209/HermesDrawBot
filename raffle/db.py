@@ -43,8 +43,6 @@ class Database:
     def __init__(self, path):
         self.path = str(path)
         Path(path).parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-        # Separate workers may start simultaneously; WAL initialization needs a
-        # process-wide lock before the database's own write lock is available.
         fd = os.open(self.path + ".init.lock", os.O_CREAT | os.O_RDWR, 0o600)
         with os.fdopen(fd, "a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -123,7 +121,6 @@ class Database:
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             current = conn.execute("SELECT * FROM rounds ORDER BY id DESC LIMIT 1").fetchone()
-            # A retried request must never create an extra round.
             if current["id"] == previous_id + 1 and current["status"] == "open":
                 return current["id"]
             if current["id"] != previous_id or current["status"] != "finished":
@@ -156,6 +153,15 @@ class Database:
             if cursor.rowcount == 0:
                 raise AppError(404, "Участник не найден.")
             return {"removed": number}
+
+    def clear_entries(self, round_id):
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = self.current(conn, round_id)
+            if current["status"] != "open":
+                raise AppError(409, "После запуска розыгрыша список изменить нельзя.")
+            cursor = conn.execute("DELETE FROM entries WHERE round_id=?", (round_id,))
+            return cursor.rowcount
 
     def winner_details(self, round_id):
         with self.connect() as conn:

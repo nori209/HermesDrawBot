@@ -156,3 +156,18 @@ class Database:
             if cursor.rowcount == 0:
                 raise AppError(404, "Участник не найден.")
             return {"removed": number}
+
+    def winner_details(self, round_id):
+        with self.connect() as conn:
+            row = conn.execute("""
+                SELECT e.telegram_id, e.number, e.username, e.display_name
+                FROM rounds r
+                JOIN entries e ON e.round_id = r.id AND e.number = r.winner_number
+                WHERE r.id = ?
+            """, (round_id,)).fetchone()
+            return dict(row) if row else None
+
+    def round_status(self, round_id):
+        with self.connect() as conn:
+            row = conn.execute("SELECT status FROM rounds WHERE id=?", (round_id,)).fetchone()
+            return row["status"] if row else None

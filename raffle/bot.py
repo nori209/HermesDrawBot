@@ -99,3 +99,22 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda *_: bot.stop.set())
     signal.signal(signal.SIGINT, lambda *_: bot.stop.set())
     bot.run()
+
+def send_message(token, chat_id, text):
+    """Send a Telegram message. Used by the web app for draw notifications."""
+    import json as _json
+    if not token or not chat_id:
+        return False
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        _json.dumps({"chat_id": chat_id, "text": text, "disable_web_page_preview": True}).encode(),
+        {"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            result = _json.load(response)
+            return bool(result.get("ok"))
+    except Exception:
+        logging.exception("Failed to send Telegram message to chat %s", chat_id)
+        return False
+

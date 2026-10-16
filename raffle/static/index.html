@@ -33,6 +33,10 @@
       </div>
     </div>
 
+    <div class="winner-line" id="winnerLine" hidden>
+      <span id="winnerLineText"></span>
+    </div>
+
     <div class="input-row">
       <label>Участников</label>
       <input type="text" id="count" value="0" inputmode="numeric" readonly>
@@ -43,19 +47,32 @@
     <button class="btn btn-ghost" id="listBtn" hidden>Участники</button>
 
     <p class="footer">Hermes Exchange</p>
-    <p class="footer">Hermes Exchange</p>
   </div>
+
   <div class="modal" id="participantsModal" hidden>
     <div class="modal-panel">
       <div class="modal-header">
-        <span class="eyebrow">УЧАСТНИКИ</span>
+        <h2>Участники</h2>
         <button class="modal-close" id="participantsClose" aria-label="Закрыть">×</button>
       </div>
       <div class="participant-list" id="participantsList"></div>
       <div class="pagination">
-        <button class="text-button" id="prevPage" disabled>← Назад</button>
+        <button id="prevPage" disabled>← Назад</button>
         <span id="pageLabel">1 / 1</span>
-        <button class="text-button" id="nextPage" disabled>Далее →</button>
+        <button id="nextPage" disabled>Далее →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="confirmModal" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2 id="confirmTitle">Подтверждение</h2>
+      </div>
+      <p class="modal-text" id="confirmText"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="confirmNo">Отмена</button>
+        <button class="btn" id="confirmYes">Подтвердить</button>
       </div>
     </div>
   </div>

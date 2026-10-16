@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from .auth import authenticate
+from .bot import send_message
 from .config import Config
 from .db import Database
 from .errors import AppError
@@ -81,7 +82,11 @@ class Application:
         if path == "/api/join":
             result = {"entry": self.db.join(rid, user)}
         elif path == "/api/admin/draw":
-            result = {"winner": self.db.draw(rid, user["id"])}
+            was_open = self.db.round_status(rid) == "open"
+            winner = self.db.draw(rid, user["id"])
+            if was_open:
+                self._notify_draw(rid)
+            result = {"winner": winner}
         elif path == "/api/admin/remove-participant":
             number = body.get("number")
             if type(number) is not int or number < 1:
@@ -90,6 +95,25 @@ class Application:
         else:
             result = {"round_id": self.db.new_round(rid)}
         return 200, result, json_type
+
+    def _notify_draw(self, round_id):
+        details = self.db.winner_details(round_id)
+        if not details:
+            return
+        name = f"@{details['username']}" if details["username"] else details["display_name"]
+        winner_text = (
+            f"🎉 Поздравляем! Вы победили в розыгрыше №{round_id}.\n"
+            f"Ваш билет: №{details['number']}.\n\n"
+            f"Свяжитесь с организатором для получения приза."
+        )
+        send_message(self.config.token, details["telegram_id"], winner_text)
+        owner_text = (
+            f"🎯 Розыгрыш №{round_id} завершён.\n\n"
+            f"Победитель: {name}\n"
+            f"Telegram ID: {details['telegram_id']}\n"
+            f"Билет: №{details['number']}"
+        )
+        send_message(self.config.token, self.config.owner_id, owner_text)
 
     @staticmethod
     def read_json(env):

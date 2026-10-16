@@ -51,6 +51,9 @@ class Database:
             with self.connect() as conn:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.executescript(SCHEMA)
+                cols = [r[1] for r in conn.execute("PRAGMA table_info(entries)").fetchall()]
+                if "place" not in cols:
+                    conn.execute("ALTER TABLE entries ADD COLUMN place INTEGER")
                 conn.execute("INSERT INTO rounds (id) SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM rounds)")
 
     @contextmanager
@@ -71,12 +74,22 @@ class Database:
             rid = current["id"]
             count = conn.execute("SELECT COUNT(*) FROM entries WHERE round_id=?", (rid,)).fetchone()[0]
             mine = conn.execute("SELECT * FROM entries WHERE round_id=? AND telegram_id=?", (rid, telegram_id)).fetchone()
-            winner = conn.execute("SELECT * FROM entries WHERE round_id=? AND number=?", (rid, current["winner_number"])).fetchone()
+            winners_rows = conn.execute(
+                "SELECT * FROM entries WHERE round_id=? AND place IS NOT NULL ORDER BY place",
+                (rid,),
+            ).fetchall()
+            if not winners_rows and current["winner_number"] is not None:
+                old = conn.execute(
+                    "SELECT * FROM entries WHERE round_id=? AND number=?",
+                    (rid, current["winner_number"]),
+                ).fetchone()
+                winners_rows = [old] if old else []
             history = conn.execute("""SELECT r.id, r.drawn_at, e.number, e.username, e.display_name
                 FROM rounds r JOIN entries e ON e.round_id=r.id AND e.number=r.winner_number
                 ORDER BY r.id DESC LIMIT 10""").fetchall()
             return {"round": {"id": rid, "status": current["status"], "drawn_at": current["drawn_at"]},
-                    "participant_count": count, "my_entry": public_entry(mine), "winner": public_entry(winner),
+                    "participant_count": count, "my_entry": public_entry(mine),
+                    "winners": [public_entry(w) for w in winners_rows],
                     "history": [dict(row) for row in history]}
 
     @staticmethod
@@ -101,21 +114,52 @@ class Database:
                          (round_id, number, user["id"], user.get("username") or None, name))
             return {"number": number, "username": user.get("username") or None, "display_name": name}
 
-    def draw(self, round_id, owner_id):
+    def draw(self, round_id, owner_id, winner_count=1):
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             current = self.current(conn, round_id)
             if current["status"] == "finished":
-                winner = conn.execute("SELECT * FROM entries WHERE round_id=? AND number=?", (round_id, current["winner_number"])).fetchone()
-            else:
-                count = conn.execute("SELECT COUNT(*) FROM entries WHERE round_id=?", (round_id,)).fetchone()[0]
-                if not count:
-                    raise AppError(409, "Пока нет участников. Сначала откройте регистрацию.")
-                winner = conn.execute("SELECT * FROM entries WHERE round_id=? ORDER BY number LIMIT 1 OFFSET ?",
-                                      (round_id, secrets.randbelow(count))).fetchone()
-                conn.execute("""UPDATE rounds SET status='finished',winner_number=?,drawn_by=?,
-                    drawn_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?""", (winner["number"], owner_id, round_id))
-            return public_entry(winner)
+                rows = conn.execute(
+                    "SELECT * FROM entries WHERE round_id=? AND place IS NOT NULL ORDER BY place",
+                    (round_id,),
+                ).fetchall()
+                if not rows and current["winner_number"] is not None:
+                    old = conn.execute(
+                        "SELECT * FROM entries WHERE round_id=? AND number=?",
+                        (round_id, current["winner_number"]),
+                    ).fetchone()
+                    rows = [old] if old else []
+                return [public_entry(r) for r in rows]
+
+            total = conn.execute(
+                "SELECT COUNT(*) FROM entries WHERE round_id=?", (round_id,)
+            ).fetchone()[0]
+            if total < winner_count:
+                raise AppError(409, f"Нужно минимум {winner_count} участников.")
+
+            rng = secrets.SystemRandom()
+            indexes = rng.sample(range(total), winner_count)
+
+            winners = []
+            for place, idx in enumerate(indexes, start=1):
+                row = conn.execute(
+                    "SELECT * FROM entries WHERE round_id=? ORDER BY number LIMIT 1 OFFSET ?",
+                    (round_id, idx),
+                ).fetchone()
+                conn.execute(
+                    "UPDATE entries SET place=? WHERE round_id=? AND number=?",
+                    (place, round_id, row["number"]),
+                )
+                item = dict(row)
+                item["place"] = place
+                winners.append(item)
+
+            conn.execute(
+                """UPDATE rounds SET status='finished', winner_number=?, drawn_by=?,
+                drawn_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?""",
+                (winners[0]["number"], owner_id, round_id),
+            )
+            return [public_entry(w) for w in winners]
 
     def new_round(self, previous_id):
         with self.connect() as conn:
@@ -154,24 +198,23 @@ class Database:
                 raise AppError(404, "Участник не найден.")
             return {"removed": number}
 
-    def clear_entries(self, round_id):
+    def winners_details(self, round_id):
         with self.connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            current = self.current(conn, round_id)
-            if current["status"] != "open":
-                raise AppError(409, "После запуска розыгрыша список изменить нельзя.")
-            cursor = conn.execute("DELETE FROM entries WHERE round_id=?", (round_id,))
-            return cursor.rowcount
-
-    def winner_details(self, round_id):
-        with self.connect() as conn:
-            row = conn.execute("""
-                SELECT e.telegram_id, e.number, e.username, e.display_name
+            rows = conn.execute(
+                """SELECT telegram_id, number, username, display_name, place
+                FROM entries WHERE round_id=? AND place IS NOT NULL ORDER BY place""",
+                (round_id,),
+            ).fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+            row = conn.execute(
+                """SELECT e.telegram_id, e.number, e.username, e.display_name, 1 AS place
                 FROM rounds r
                 JOIN entries e ON e.round_id = r.id AND e.number = r.winner_number
-                WHERE r.id = ?
-            """, (round_id,)).fetchone()
-            return dict(row) if row else None
+                WHERE r.id = ?""",
+                (round_id,),
+            ).fetchone()
+            return [dict(row)] if row else []
 
     def round_status(self, round_id):
         with self.connect() as conn:

@@ -37,9 +37,14 @@
       <span id="winnerLineText"></span>
     </div>
 
-    <div class="input-row">
+    <div class="input-row" id="countRow" hidden>
       <label>Участников</label>
       <input type="text" id="count" value="0" inputmode="numeric" readonly>
+    </div>
+
+    <div class="winner-count-row" id="winnerCountRow" hidden>
+      <label>Победителей</label>
+      <input type="number" id="winnerCount" value="1" min="1" max="10" inputmode="numeric">
     </div>
 
     <button class="btn" id="mainBtn" disabled>Загрузка…</button>

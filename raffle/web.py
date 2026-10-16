@@ -1,11 +1,13 @@
 import json
 import logging
+import threading
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs
 
+from . import ticket
 from .auth import authenticate
-from .bot import send_message
+from .bot import send_message, send_photo
 from .config import Config
 from .db import Database
 from .errors import AppError
@@ -80,13 +82,24 @@ class Application:
         if type(rid) is not int or rid < 1:
             raise AppError(400, "Укажите номер розыгрыша.")
         if path == "/api/join":
-            result = {"entry": self.db.join(rid, user)}
+            was_registered = self.db.state(user["id"])["my_entry"] is not None
+            entry = self.db.join(rid, user)
+            result = {"entry": entry}
+            if not was_registered:
+                threading.Thread(
+                    target=self._send_ticket,
+                    args=(user["id"], entry["number"]),
+                    daemon=True,
+                ).start()
         elif path == "/api/admin/draw":
+            winner_count = body.get("winner_count", 1)
+            if type(winner_count) is not int or not 1 <= winner_count <= 10:
+                raise AppError(400, "Некорректное число победителей.")
             was_open = self.db.round_status(rid) == "open"
-            winner = self.db.draw(rid, user["id"])
+            winners = self.db.draw(rid, user["id"], winner_count)
             if was_open:
-                self._notify_draw(rid)
-            result = {"winner": winner}
+                self._notify_draw(rid, winners)
+            result = {"winners": winners}
         elif path == "/api/admin/remove-participant":
             number = body.get("number")
             if type(number) is not int or number < 1:
@@ -96,24 +109,36 @@ class Application:
             result = {"round_id": self.db.new_round(rid)}
         return 200, result, json_type
 
-    def _notify_draw(self, round_id):
-        details = self.db.winner_details(round_id)
-        if not details:
+    def _notify_draw(self, round_id, winners):
+        if not winners:
             return
-        name = f"@{details['username']}" if details["username"] else details["display_name"]
-        winner_text = (
-            f"🎉 Поздравляем! Вы победили в розыгрыше №{round_id}.\n"
-            f"Ваш билет: №{details['number']}.\n\n"
-            f"Свяжитесь с организатором для получения приза."
-        )
-        send_message(self.config.token, details["telegram_id"], winner_text)
-        owner_text = (
-            f"🎯 Розыгрыш №{round_id} завершён.\n\n"
-            f"Победитель: {name}\n"
-            f"Telegram ID: {details['telegram_id']}\n"
-            f"Билет: №{details['number']}"
-        )
-        send_message(self.config.token, self.config.owner_id, owner_text)
+        for place, w in enumerate(winners, start=1):
+            text = (
+                f"🎉 Поздравляем! Вы победили в розыгрыше.\n"
+                f"Место: {place}\n"
+                f"Ваш билет: №{w['number']}.\n\n"
+                f"Свяжитесь с организатором для получения приза."
+            )
+            send_message(self.config.token, w["telegram_id"], text)
+
+        lines = [f"🎯 Розыгрыш №{round_id} завершён.\n"]
+        for place, w in enumerate(winners, start=1):
+            name = f"@{w['username']}" if w.get("username") else w["display_name"]
+            lines.append(f"{place}. {name} — билет №{w['number']} (ID {w['telegram_id']})")
+        send_message(self.config.token, self.config.owner_id, "\n".join(lines))
+
+    def _send_ticket(self, telegram_id, number):
+        try:
+            total = self.db.state(telegram_id)["participant_count"]
+            img = ticket.generate(number, total)
+            send_photo(
+                self.config.token,
+                telegram_id,
+                img,
+                caption=f"🎟 Ваш билет: №{number}\nУдачи в розыгрыше!",
+            )
+        except Exception:
+            logging.exception("Failed to send ticket to %s", telegram_id)
 
     @staticmethod
     def read_json(env):

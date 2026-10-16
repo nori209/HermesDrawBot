@@ -238,10 +238,8 @@ function syncSpinState() {
   });
 }
 
-// === НОВАЯ АНИМАЦИЯ ===
-// Кривая скорости: разгон → бешенство → замедление → ложный финал →
-// снова разгон → финальная остановка.
-// На высокой скорости — усиленное свечение и мелкая тряска.
+// Простая рулетка: число быстро меняется, замедляется к концу.
+// Никакой крутящейся рамки, никаких ложных финалов.
 async function spinFor(durationMs, finalNumber) {
   stage.classList.add('rolling');
   document.body.classList.add('drawing');
@@ -250,81 +248,27 @@ async function spinFor(durationMs, finalNumber) {
   const start = performance.now();
   let lastHapticAt = 0;
 
-  function rand() {
-    return pad(Math.max(1, Math.floor(Math.random() * top) + 1));
-  }
-
-  function paint(text, shake) {
-    numberEl.textContent = text;
-    fitFont(text);
-    if (shake) {
-      numberEl.classList.remove('tick');
-      void numberEl.offsetWidth;
-      numberEl.classList.add('tick');
-    }
-  }
-
   while (true) {
     const elapsed = performance.now() - start;
     if (elapsed >= durationMs) break;
     const p = elapsed / durationMs;
+    const interval = 35 + Math.pow(p, 2.6) * 720;
 
-    let interval;
-    let shake = false;
-    let glow = 'normal'; // normal | hot
+    const text = pad(Math.max(1, Math.floor(Math.random() * top) + 1));
+    numberEl.textContent = text;
+    fitFont(text);
 
-    if (p < 0.15) {
-      // 1. Разгон: 120 → 45 мс
-      interval = 120 - (p / 0.15) * 75;
-    } else if (p < 0.5) {
-      // 2. Бешенство: 40 мс
-      interval = 40;
-      glow = 'hot';
-    } else if (p < 0.7) {
-      // 3. Первое замедление: 60 → 340 мс
-      const q = (p - 0.5) / 0.2;
-      interval = 60 + Math.pow(q, 1.8) * 280;
-      shake = q > 0.55;
-    } else if (p < 0.78) {
-      // 4. Ложный финал: 480 мс, тряска
-      interval = 480;
-      shake = true;
-    } else if (p < 0.84) {
-      // 5. Резкий разгон обратно: 480 → 60 мс
-      const q = (p - 0.78) / 0.06;
-      interval = 480 - q * 420;
-      glow = 'hot';
-    } else {
-      // 6. Финальная остановка: 80 → 780 мс
-      const q = (p - 0.84) / 0.16;
-      interval = 80 + Math.pow(q, 2.4) * 700;
-      shake = q > 0.35;
-    }
-
-    paint(rand(), shake);
-
-    // Свечение зависит от скорости
-    if (glow === 'hot') {
-      numberEl.style.textShadow = '0 0 18px #fff, 0 0 40px var(--neon), 0 0 90px var(--crimson), 0 0 150px var(--blood)';
-    } else {
-      numberEl.style.textShadow = '';
-    }
-
-    // Вибрация по интервалу
-    const minGap = Math.max(60, interval * 0.85);
+    const minGap = Math.max(50, interval * 0.85);
     if (elapsed - lastHapticAt > minGap) {
-      haptic(interval > 280 ? 'heavy' : interval < 60 ? 'medium' : 'light');
+      haptic(interval > 350 ? 'heavy' : interval < 60 ? 'medium' : 'light');
       lastHapticAt = elapsed;
     }
 
     await sleep(interval);
   }
 
-  // Короткая пауза "затишья" перед победителем
-  await sleep(140);
+  await sleep(160);
 
-  numberEl.style.textShadow = '';
-  numberEl.classList.remove('tick');
   stage.classList.remove('rolling');
   document.body.classList.remove('drawing');
 

@@ -290,15 +290,6 @@ body.drawing .display-box {
 }
 
 /* === АНИМАЦИЯ СПИНА === */
-.stage.rolling .ring {
-  animation: ringSpin 0.7s linear infinite;
-  opacity: 1 !important;
-}
-@keyframes ringSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 .stage.rolling .display-box {
   animation: pulseGlow 0.5s ease-in-out infinite alternate;
 }
@@ -345,15 +336,6 @@ body.drawing .display-box {
 @keyframes ripple {
   0%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); }
-}
-
-.number.tick {
-  animation: tickShake 0.08s ease-out;
-}
-@keyframes tickShake {
-  0%   { transform: translateY(0); }
-  50%  { transform: translateY(-2px); }
-  100% { transform: translateY(0); }
 }
 
 /* === СТРОКА ПОБЕДИТЕЛЕЙ === */

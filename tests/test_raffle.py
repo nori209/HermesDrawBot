@@ -169,7 +169,13 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.request("/api/join", "POST", {"round_id": 1}, user=444)["status"], 409)
         state = self.request("/api/state")["body"]
         self.assertFalse(state["is_owner"])
-        self.assertNotIn("telegram_id", state["winner"])
+        self.assertIsNone(state["winner"])
+        self.assertEqual(state["history"], [])
+        self.assertEqual(state["my_entry"]["number"], 1)
+        owner_state = self.request("/api/state", user=OWNER)["body"]
+        self.assertTrue(owner_state["is_owner"])
+        self.assertEqual(owner_state["winner"]["number"], 1)
+        self.assertEqual(len(owner_state["history"]), 1)
         self.assertEqual(self.request("/api/admin/new-round", "POST", {"round_id": 1}, user=OWNER)["status"], 200)
         self.assertEqual(self.request("/api/admin/draw", "POST", {"round_id": 1}, user=OWNER)["status"], 409)
 

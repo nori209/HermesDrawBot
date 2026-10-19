@@ -18,6 +18,26 @@ SECURITY_HEADERS = [
     ("Content-Security-Policy", "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors https://web.telegram.org https://*.telegram.org"),
 ]
 
+WINNER_TEXT = (
+    "🎉 Сегодня удача на Вашей стороне!\n\n"
+    "Поздравляем, Вы стали победителем\n\n"
+    "🤝 Чтобы получить подарок, напишите, пожалуйста, в нашу группу. "
+    "Мы найдём Вас на конференции и лично передадим Вам приз.\n\n"
+    "Спасибо за участие и до скорой встречи!\n\n"
+    "Искренне Ваша,\n"
+    "Команда HERMES 🫡"
+)
+
+LOSER_TEXT = (
+    "🎁 Сегодня Фортуна к Вам неблагосклонна\n\n"
+    "К сожалению, Вам не удалось стать победителем, но благодарим Вас за участие!\n\n"
+    "🤝 Главное — команда HERMES всегда на связи, с радостью ответит на любые вопросы "
+    "и поможет с любыми задачами по обмену криптовалюты.\n\n"
+    "Ждём Вас в нашем Telegram-канале — там Вы найдёте самые важные новости и обновления.\n\n"
+    "Искренне Ваша,\n"
+    "Команда HERMES 🫡"
+)
+
 
 class Application:
     def __init__(self, config):
@@ -128,19 +148,9 @@ class Application:
         if not details:
             return
         for d in details:
-            place = d.get("place", 1)
-            place_str = f"\nМесто: {place}" if place > 1 else ""
-            text = (
-                f"🎉 Поздравляем! Вы победили в розыгрыше №{round_id}.\n"
-                f"Ваш билет: №{d['number']:03d}{place_str}\n\n"
-                f"Свяжитесь с организатором для получения приза."
-            )
-            send_message(self.config.token, d["telegram_id"], text)
+            send_message(self.config.token, d["telegram_id"], WINNER_TEXT)
         for loser_id in self.db.losers_ids(round_id):
-            send_message(
-                self.config.token, loser_id,
-                f"Розыгрыш №{round_id} завершён. Увы, в этот раз без победы. Удачи в следующий раз!"
-            )
+            send_message(self.config.token, loser_id, LOSER_TEXT)
         lines = [f"🎯 Розыгрыш №{round_id} завершён."]
         for d in details:
             name = f"@{d['username']}" if d["username"] else d["display_name"]

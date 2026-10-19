@@ -143,16 +143,19 @@ function renderRoundStatus(open) {
     roundStatus.replaceChildren();
     return;
   }
-  const owner = state.is_owner;
-  const winners = state.winners || [];
+
   roundStatus.replaceChildren();
 
   const head = document.createElement('div');
-  head.appendChild(document.createTextNode('Розыгрыш '));
-  const num = document.createElement('strong');
-  num.textContent = `№${state.round.id}`;
-  head.appendChild(num);
-  head.appendChild(document.createTextNode(' завершён.'));
+  if (state.is_owner) {
+    head.appendChild(document.createTextNode('Розыгрыш '));
+    const num = document.createElement('strong');
+    num.textContent = `№${state.round.id}`;
+    head.appendChild(num);
+    head.appendChild(document.createTextNode(' завершён.'));
+  } else {
+    head.appendChild(document.createTextNode('Розыгрыш завершён.'));
+  }
   roundStatus.appendChild(head);
 
   if (state.my_entry) {
@@ -160,15 +163,6 @@ function renderRoundStatus(open) {
     t.className = 'my-ticket';
     t.textContent = `Ваш билет: №${pad(state.my_entry.number)}`;
     roundStatus.appendChild(t);
-  }
-
-  if (!owner) {
-    const note = document.createElement('span');
-    note.className = 'note';
-    note.textContent = winners.length
-      ? 'Результаты объявлены. Спасибо за участие!'
-      : 'Результаты объявляет организатор.';
-    roundStatus.appendChild(note);
   }
 
   roundStatus.hidden = false;

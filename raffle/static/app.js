@@ -147,6 +147,7 @@ function renderRoundStatus(open) {
   roundStatus.replaceChildren();
 
   const head = document.createElement('div');
+  // Если это владелец, показываем номер розыгрыша. Если обычный участник — просто "Розыгрыш завершён."
   if (state.is_owner) {
     head.appendChild(document.createTextNode('Розыгрыш '));
     const num = document.createElement('strong');
@@ -164,6 +165,8 @@ function renderRoundStatus(open) {
     t.textContent = `Ваш билет: №${pad(state.my_entry.number)}`;
     roundStatus.appendChild(t);
   }
+
+  // Блок с надписью "Результаты объявляет организатор" полностью удален.
 
   roundStatus.hidden = false;
 }
@@ -435,7 +438,7 @@ async function loadParticipants() {
       btn.className = 'p-remove';
       btn.textContent = 'Удалить';
       btn.addEventListener('click', () => removeParticipant(item.number));
-      row.append(btn);
+      row.appendChild(btn);
     }
     return row;
   });

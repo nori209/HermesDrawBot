@@ -76,17 +76,6 @@ def _draw_tracked(draw, text, x, y, font, fill, tracking=0, align="left"):
         cx += w + track_px
 
 
-def _perforation(draw, y, x_start, x_end, color=PLATINUM_DARK):
-    y = S(y)
-    x = S(x_start)
-    end = S(x_end)
-    dash = S(6)
-    gap = S(8)
-    while x < end:
-        draw.line([(x, y), (x + dash, y)], fill=color, width=S(2))
-        x += dash + gap
-
-
 def generate(number, total=None):
     img = Image.new("RGB", (SW, SH), BLACK)
     draw = ImageDraw.Draw(img)
@@ -109,7 +98,7 @@ def generate(number, total=None):
 
     corner = _font("bold", 17)
     draw.text((S(30), S(58)), "HERMES EXCHANGE", font=corner, fill=DEEP_RED)
-    draw.text((S(30), S(82)), "КРИПБИЛЕТ · 2026",
+    draw.text((S(30), S(82)), "КРИПТОБИЛЕТ · 2026",
               font=_font("regular", 13), fill=DEEP_RED)
 
     _draw_logo(draw, W - 110, 60, 120, 42, DEEP_RED)
@@ -135,28 +124,16 @@ def generate(number, total=None):
     draw = ImageDraw.Draw(img)
     draw.text((nx, ny), num_str, font=num_font, fill=WHITE)
 
-    series_font = _font("bold", 19)
-    _draw_tracked(draw, "СЕРИЯ  HE", 55, 795, series_font, PLATINUM,
-                  tracking=4, align="left")
-    _draw_tracked(draw, f"№  {number:05d}", W - 55, 795, series_font, PLATINUM,
-                  tracking=4, align="right")
-
     date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
-    _draw_tracked(draw, f"ДАТА  {date_str}", 55, 828,
+    _draw_tracked(draw, f"ДАТА  {date_str}", W / 2, 900,
                   _font("regular", 15), PLATINUM_DARK,
-                  tracking=3, align="left")
+                  tracking=3, align="center")
 
-    _perforation(draw, 900, 50, W - 50)
-
-    _draw_tracked(draw, "КОНТРОЛЬНЫЙ КОРЕШОК", W / 2, 940,
-                  _font("bold", 16), SOFT,
-                  tracking=8, align="center")
-
-    _draw_logo(draw, W / 2, 1035, 220, 58, PLATINUM)
+    _draw_logo(draw, W / 2, 1010, 220, 58, PLATINUM)
 
     brand = _font("bold", 13)
     _draw_tracked(draw, "THE HERMES EXCHANGE — SINCE 2018",
-                  W / 2, 1100, brand, HERMES_RED,
+                  W / 2, 1080, brand, HERMES_RED,
                   tracking=3, align="center")
 
     draw.rectangle([0, 0, SW - 1, SH - 1], outline=HERMES_RED, width=S(1))

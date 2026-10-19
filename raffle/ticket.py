@@ -101,8 +101,6 @@ def generate(number, total=None):
     draw.text((S(30), S(82)), "КРИПТОБИЛЕТ · 2026",
               font=_font("regular", 13), fill=DEEP_RED)
 
-    _draw_logo(draw, W - 110, 60, 120, 42, DEEP_RED)
-
     draw.rectangle([0, header_h, SW, header_h + S(5)], fill=HERMES_RED)
 
     _draw_tracked(draw, "БИЛЕТ", W / 2, 195, _font("bold", 22), SOFT,

@@ -128,8 +128,7 @@ class Bot:
 
     def cmd_welcome(self, chat_id, is_owner):
         welcome = ("🎯 Добро пожаловать в розыгрыш!\n\n"
-                   "Откройте приложение и нажмите «Участвовать». Вы получите личный номер "
-                   "и PNG-билет в этом чате. Команда /ticket пришлёт номер повторно.")
+                   "Откройте приложение и нажмите «Участвовать».")
         if is_owner:
             welcome += "\n\nВы — организатор. Команды: /admin"
         self.reply(chat_id, welcome, reply_markup={"inline_keyboard": [[

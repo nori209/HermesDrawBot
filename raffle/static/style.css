@@ -189,6 +189,39 @@ body {
   100% { transform: scale(1); }
 }
 
+/* === СТАТУС РОЗЫГРЫША === */
+.round-status {
+  text-align: center;
+  padding: 14px 16px;
+  margin: -8px 0 0;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--soft);
+  background: rgba(255, 204, 213, 0.06);
+  border: 1px solid rgba(255, 204, 213, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  line-height: 1.65;
+  animation: winnerFadeIn .5s ease-out;
+}
+.round-status strong { color: #fff; font-weight: 900; }
+.round-status .my-ticket {
+  display: block;
+  margin-top: 6px;
+  color: var(--neon);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.round-status .note {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
 /* === ИНПУТ === */
 .input-row, .winner-count-row {
   display: flex; align-items: center;

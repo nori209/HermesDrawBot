@@ -18,6 +18,7 @@ const secondBtn = $('secondBtn');
 const listBtn = $('listBtn');
 const stage = $('stage');
 const flash = $('flash');
+const roundStatus = $('roundStatus');
 const winnerLine = $('winnerLine');
 const winnerLineText = $('winnerLineText');
 const winnerCountRow = $('winnerCountRow');
@@ -132,6 +133,47 @@ function medals(i) {
   return ['🏆', '🥈', '🥉'][i] || `${i + 1}.`;
 }
 
+function renderRoundStatus(open) {
+  if (!state) {
+    roundStatus.hidden = true;
+    return;
+  }
+  if (open || spinState.active) {
+    roundStatus.hidden = true;
+    roundStatus.replaceChildren();
+    return;
+  }
+  const owner = state.is_owner;
+  const winners = state.winners || [];
+  roundStatus.replaceChildren();
+
+  const head = document.createElement('div');
+  head.appendChild(document.createTextNode('Розыгрыш '));
+  const num = document.createElement('strong');
+  num.textContent = `№${state.round.id}`;
+  head.appendChild(num);
+  head.appendChild(document.createTextNode(' завершён.'));
+  roundStatus.appendChild(head);
+
+  if (state.my_entry) {
+    const t = document.createElement('span');
+    t.className = 'my-ticket';
+    t.textContent = `Ваш билет: №${pad(state.my_entry.number)}`;
+    roundStatus.appendChild(t);
+  }
+
+  if (!owner) {
+    const note = document.createElement('span');
+    note.className = 'note';
+    note.textContent = winners.length
+      ? 'Результаты объявлены. Спасибо за участие!'
+      : 'Результаты объявляет организатор.';
+    roundStatus.appendChild(note);
+  }
+
+  roundStatus.hidden = false;
+}
+
 function render() {
   if (!state) return;
 
@@ -140,6 +182,10 @@ function render() {
     setNumber(value, { winner: Boolean(mainWinner()) && !spinState.active });
     shownValue = value;
   }
+
+  const open = state.round.status === 'open';
+
+  renderRoundStatus(open);
 
   const winners = state.winners || [];
   if (winners.length && state.round.status === 'finished' && !spinState.active) {
@@ -154,7 +200,6 @@ function render() {
     winnerLine.hidden = true;
   }
 
-  const open = state.round.status === 'open';
   const owner = state.is_owner;
   const joined = Boolean(state.my_entry);
   const locked = busy || fatal || spinState.active;
@@ -162,7 +207,8 @@ function render() {
   mainBtn.disabled = locked || !open || joined || !tg?.initData;
   if (!tg?.initData) mainBtn.textContent = 'Откройте через Telegram';
   else if (busy) mainBtn.textContent = '…';
-  else if (joined) mainBtn.textContent = 'Вы участвуете';
+  else if (joined && open) mainBtn.textContent = 'Вы участвуете';
+  else if (joined && !open) mainBtn.textContent = 'Розыгрыш завершён';
   else if (!open) mainBtn.textContent = 'Розыгрыш завершён';
   else mainBtn.textContent = 'Участвовать';
 
@@ -238,8 +284,6 @@ function syncSpinState() {
   });
 }
 
-// Простая рулетка: число быстро меняется, замедляется к концу.
-// Никакой крутящейся рамки, никаких ложных финалов.
 async function spinFor(durationMs, finalNumber) {
   stage.classList.add('rolling');
   document.body.classList.add('drawing');

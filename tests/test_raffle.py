@@ -7,6 +7,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 from urllib.parse import urlencode
 
 from raffle.auth import authenticate
@@ -21,9 +22,12 @@ OWNER = 777
 
 def signed(user_id=123, now=None, **extra):
     fields = {"auth_date": str(int(time.time()) if now is None else now),
-              "query_id": "test-query", "user": json.dumps({"id": user_id, "first_name": "Тест", **extra}, ensure_ascii=False)}
+              "query_id": "test-query",
+              "user": json.dumps({"id": user_id, "first_name": "Тест", **extra}, ensure_ascii=False)}
     secret = hmac.digest(b"WebAppData", TOKEN.encode(), "sha256")
-    fields["hash"] = hmac.new(secret, "\n".join(f"{k}={v}" for k, v in sorted(fields.items())).encode(), hashlib.sha256).hexdigest()
+    fields["hash"] = hmac.new(secret,
+                              "\n".join(f"{k}={v}" for k, v in sorted(fields.items())).encode(),
+                              hashlib.sha256).hexdigest()
     return urlencode(fields)
 
 
@@ -52,7 +56,8 @@ class DatabaseTests(unittest.TestCase):
         self.directory.cleanup()
 
     def join(self, uid):
-        return self.db.join(1, {"id": uid, "first_name": "User", "username": f"user{uid}"})
+        entry, _ = self.db.join(1, {"id": uid, "first_name": "User", "username": f"user{uid}"})
+        return entry
 
     def test_concurrent_registrations_unique_sequential_idempotent(self):
         with ThreadPoolExecutor(max_workers=12) as pool:
@@ -66,10 +71,10 @@ class DatabaseTests(unittest.TestCase):
             self.join(uid)
         with ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(lambda _: self.db.draw(1, OWNER), range(16)))
-        self.assertEqual(len({result["number"] for result in results}), 1)
-        self.assertIn(results[0]["number"], range(1, 11))
+        self.assertEqual(len({result[0]["number"] for result in results}), 1)
+        self.assertIn(results[0][0]["number"], range(1, 11))
         persisted = Database(self.db.path).state(1)
-        self.assertEqual(persisted["winner"], results[0])
+        self.assertEqual(persisted["winners"], results[0])
         self.assertEqual(persisted["round"]["status"], "finished")
         with self.assertRaises(AppError):
             self.join(999)
@@ -77,21 +82,23 @@ class DatabaseTests(unittest.TestCase):
 
     def test_draw_and_join_race_has_consistent_snapshot(self):
         self.join(1)
+
         def attempt(uid):
             try:
                 return self.join(uid)
             except AppError:
                 return None
+
         with ThreadPoolExecutor(max_workers=10) as pool:
             futures = [pool.submit(attempt, uid) for uid in range(2, 41)]
             winner_future = pool.submit(self.db.draw, 1, OWNER)
             futures += [pool.submit(attempt, uid) for uid in range(41, 81)]
             accepted = [f.result() for f in futures if f.result() is not None]
-            winner = winner_future.result()
+            winners = winner_future.result()
         state = self.db.state(1)
         self.assertEqual(state["participant_count"], 1 + len(accepted))
-        self.assertIn(winner["number"], [1] + [e["number"] for e in accepted])
-        self.assertEqual(self.db.draw(1, OWNER), winner)
+        self.assertIn(winners[0]["number"], [1] + [e["number"] for e in accepted])
+        self.assertEqual(self.db.draw(1, OWNER), winners)
 
     def test_empty_draw_new_round_stale_requests_and_history(self):
         with self.assertRaises(AppError):
@@ -108,7 +115,9 @@ class DatabaseTests(unittest.TestCase):
             self.db.draw(1, OWNER)
         with self.assertRaises(AppError):
             self.db.join(1, {"id": 333})
-        self.assertEqual(self.db.join(2, {"id": 123})["number"], 1)
+        entry, is_new = self.db.join(2, {"id": 123})
+        self.assertEqual(entry["number"], 1)
+        self.assertTrue(is_new)
 
     def test_independent_databases(self):
         other = Database(Path(self.directory.name) / "other.sqlite3")
@@ -129,11 +138,28 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(len(self.db.participants(1, 2)["items"]), 5)
         self.assertNotIn("telegram_id", self.db.state(1)["my_entry"])
 
+    def test_multiple_winners(self):
+        for uid in range(1, 11):
+            self.join(uid)
+        winners = self.db.draw(1, OWNER, winner_count=3)
+        self.assertEqual(len(winners), 3)
+        self.assertEqual({w["place"] for w in winners}, {1, 2, 3})
+        self.assertEqual(len({w["number"] for w in winners}), 3)
+        again = self.db.draw(1, OWNER, winner_count=3)
+        self.assertEqual(again, winners)
+
 
 class WebTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
-        self.app = Application(Config(TOKEN, OWNER, "https://raffle.example.com", str(Path(self.directory.name) / "db.sqlite3")))
+        self.app = Application(Config(TOKEN, OWNER, "https://raffle.example.com",
+                                      str(Path(self.directory.name) / "db.sqlite3")))
+        self.p1 = mock.patch("raffle.web.send_message", return_value=True)
+        self.p1.start()
+        self.addCleanup(self.p1.stop)
+        self.p2 = mock.patch("raffle.bot.send_photo", return_value=True)
+        self.p2.start()
+        self.addCleanup(self.p2.stop)
 
     def tearDown(self):
         self.directory.cleanup()
@@ -142,17 +168,22 @@ class WebTests(unittest.TestCase):
         path, _, query = path.partition("?")
         data = json.dumps(body).encode() if body is not None else b""
         env = {"PATH_INFO": path, "QUERY_STRING": query, "REQUEST_METHOD": method,
-               "CONTENT_TYPE": content_type, "CONTENT_LENGTH": str(len(data)), "wsgi.input": io.BytesIO(data),
+               "CONTENT_TYPE": content_type, "CONTENT_LENGTH": str(len(data)),
+               "wsgi.input": io.BytesIO(data),
                "HTTP_AUTHORIZATION": "tma " + (signed(user) if auth is None else auth)}
         response = {}
+
         def start(status, headers):
             response.update(status=int(status.split()[0]), headers=dict(headers))
+
         raw = b"".join(self.app(env, start))
         response["body"] = json.loads(raw) if response["headers"]["Content-Type"].startswith("application/json") else raw
         return response
 
     def test_owner_authorization_on_every_admin_route(self):
-        for route, method in [("/api/admin/draw", "POST"), ("/api/admin/new-round", "POST"), ("/api/admin/participants?round_id=1", "GET")]:
+        for route, method in [("/api/admin/draw", "POST"),
+                              ("/api/admin/new-round", "POST"),
+                              ("/api/admin/participants?round_id=1", "GET")]:
             self.assertEqual(self.request(route, method, {"round_id": 1})["status"], 403)
             self.assertEqual(self.request(route, method, {"round_id": 1}, auth="forged")["status"], 401)
 
@@ -163,18 +194,18 @@ class WebTests(unittest.TestCase):
         private = self.request("/api/admin/participants?round_id=1", user=OWNER)
         self.assertEqual(private["body"]["items"][0]["telegram_id"], 123)
         result = self.request("/api/admin/draw", "POST", {"round_id": 1}, user=OWNER)
-        self.assertEqual(result["body"]["winner"]["number"], 1)
+        self.assertEqual(result["body"]["winners"][0]["number"], 1)
         again = self.request("/api/admin/draw", "POST", {"round_id": 1}, user=OWNER)
         self.assertEqual(result["body"], again["body"])
         self.assertEqual(self.request("/api/join", "POST", {"round_id": 1}, user=444)["status"], 409)
         state = self.request("/api/state")["body"]
         self.assertFalse(state["is_owner"])
-        self.assertIsNone(state["winner"])
+        self.assertEqual(state["winners"], [])
         self.assertEqual(state["history"], [])
         self.assertEqual(state["my_entry"]["number"], 1)
         owner_state = self.request("/api/state", user=OWNER)["body"]
         self.assertTrue(owner_state["is_owner"])
-        self.assertEqual(owner_state["winner"]["number"], 1)
+        self.assertEqual(owner_state["winners"][0]["number"], 1)
         self.assertEqual(len(owner_state["history"]), 1)
         self.assertEqual(self.request("/api/admin/new-round", "POST", {"round_id": 1}, user=OWNER)["status"], 200)
         self.assertEqual(self.request("/api/admin/draw", "POST", {"round_id": 1}, user=OWNER)["status"], 409)

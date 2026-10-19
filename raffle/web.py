@@ -35,9 +35,23 @@ class Application:
             status, body = 500, {"error": "Временная ошибка. Повторите попытку."}
         if not isinstance(body, bytes):
             body = json.dumps(body, ensure_ascii=False).encode()
-        headers = SECURITY_HEADERS + [("Content-Type", content_type), ("Content-Length", str(len(body))), ("Cache-Control", "no-store")]
+        headers = SECURITY_HEADERS + [
+            ("Content-Type", content_type),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-store"),
+        ]
         start_response(f"{status} {HTTPStatus(status).phrase}", headers)
         return [body]
+
+    def _send_ticket(self, chat_id, number):
+        try:
+            from .ticket import generate
+            png = generate(number)
+        except Exception:
+            logging.exception("Ticket render failed")
+            return
+        from .bot import send_photo
+        send_photo(self.config.token, chat_id, png, caption=f"🎟 Билет №{number:03d}")
 
     def dispatch(self, env):
         path, method = env.get("PATH_INFO", "/"), env.get("REQUEST_METHOD", "GET")
@@ -46,8 +60,10 @@ class Application:
             with self.db.connect() as conn:
                 conn.execute("SELECT 1").fetchone()
             return 200, {"status": "ok", "configured": bool(self.config.token and self.config.owner_id)}, json_type
-        assets = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-                  "/style.css": ("style.css", "text/css; charset=utf-8"), "/favicon.svg": ("favicon.svg", "image/svg+xml")}
+        assets = {"/": ("index.html", "text/html; charset=utf-8"),
+                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                  "/style.css": ("style.css", "text/css; charset=utf-8"),
+                  "/favicon.svg": ("favicon.svg", "image/svg+xml")}
         if path in assets and method == "GET":
             name, content_type = assets[path]
             return 200, (STATIC / name).read_bytes(), content_type
@@ -60,18 +76,17 @@ class Application:
             raise AppError(405, "Метод не поддерживается.")
         auth = env.get("HTTP_AUTHORIZATION", "")
         user = authenticate(auth[4:] if auth.startswith("tma ") else "", self.config.token, self.config.auth_ttl)
-        is_owner = user["id"] == self.config.owner_id
+        is_owner = self.config.is_owner(user["id"])
         if path.startswith("/api/admin/") and not is_owner:
             raise AppError(403, "Эта функция доступна только организатору.")
         if path == "/api/state":
             state = self.db.state(user["id"])
-            # Winner and history are visible only to the owner. Regular
-            # participants must not learn the result through /api/state.
             if not is_owner:
-                state["winner"] = None
+                state["winners"] = []
                 state["history"] = []
             return 200, {**state, "is_owner": is_owner,
-                         "user": {"first_name": user.get("first_name", "Участник"), "username": user.get("username")}}, json_type
+                         "user": {"first_name": user.get("first_name", "Участник"),
+                                  "username": user.get("username")}}, json_type
         if path == "/api/admin/participants":
             query = parse_qs(env.get("QUERY_STRING", ""))
             try:
@@ -86,13 +101,19 @@ class Application:
         if type(rid) is not int or rid < 1:
             raise AppError(400, "Укажите номер розыгрыша.")
         if path == "/api/join":
-            result = {"entry": self.db.join(rid, user)}
+            entry, is_new = self.db.join(rid, user)
+            if is_new:
+                self._send_ticket(user["id"], entry["number"])
+            result = {"entry": entry}
         elif path == "/api/admin/draw":
+            winner_count = body.get("winner_count", 1)
+            if type(winner_count) is not int:
+                raise AppError(400, "winner_count должен быть целым числом.")
             was_open = self.db.round_status(rid) == "open"
-            winner = self.db.draw(rid, user["id"])
+            winners = self.db.draw(rid, user["id"], winner_count)
             if was_open:
                 self._notify_draw(rid)
-            result = {"winner": winner}
+            result = {"winners": winners}
         elif path == "/api/admin/remove-participant":
             number = body.get("number")
             if type(number) is not int or number < 1:
@@ -103,23 +124,30 @@ class Application:
         return 200, result, json_type
 
     def _notify_draw(self, round_id):
-        details = self.db.winner_details(round_id)
+        details = self.db.winners_details(round_id)
         if not details:
             return
-        name = f"@{details['username']}" if details["username"] else details["display_name"]
-        winner_text = (
-            f"🎉 Поздравляем! Вы победили в розыгрыше №{round_id}.\n"
-            f"Ваш билет: №{details['number']}.\n\n"
-            f"Свяжитесь с организатором для получения приза."
-        )
-        send_message(self.config.token, details["telegram_id"], winner_text)
-        owner_text = (
-            f"🎯 Розыгрыш №{round_id} завершён.\n\n"
-            f"Победитель: {name}\n"
-            f"Telegram ID: {details['telegram_id']}\n"
-            f"Билет: №{details['number']}"
-        )
-        send_message(self.config.token, self.config.owner_id, owner_text)
+        for d in details:
+            place = d.get("place", 1)
+            place_str = f"\nМесто: {place}" if place > 1 else ""
+            text = (
+                f"🎉 Поздравляем! Вы победили в розыгрыше №{round_id}.\n"
+                f"Ваш билет: №{d['number']:03d}{place_str}\n\n"
+                f"Свяжитесь с организатором для получения приза."
+            )
+            send_message(self.config.token, d["telegram_id"], text)
+        for loser_id in self.db.losers_ids(round_id):
+            send_message(
+                self.config.token, loser_id,
+                f"Розыгрыш №{round_id} завершён. Увы, в этот раз без победы. Удачи в следующий раз!"
+            )
+        lines = [f"🎯 Розыгрыш №{round_id} завершён."]
+        for d in details:
+            name = f"@{d['username']}" if d["username"] else d["display_name"]
+            lines.append(f"{d.get('place', 1)}. {name} · ID {d['telegram_id']} · билет №{d['number']:03d}")
+        owner_text = "\n".join(lines)
+        for owner_id in self.config.owner_ids:
+            send_message(self.config.token, owner_id, owner_text)
 
     @staticmethod
     def read_json(env):
